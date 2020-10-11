@@ -7,7 +7,7 @@ from stereovision.calibration import *
 from stereovision.ui_utils import *
 
 block_matcher = StereoSGBM()  # alt StereoBM() Todo fix
-calibration = StereoCalibration(input_folder='stereo_calibration')
+calibration = StereoCalibration(input_folder='old_stereo_calibration')
 
 
 def plot_disparuty():
@@ -58,7 +58,7 @@ def show_corners():
     cv2.destroyAllWindows()
 
 
-def generate_calibrator(indir='capture', outdir='stereo_calibration', rows=6, columns=9, square_size=1.8):
+def generate_calibrator(indir='capture', outdir='old_stereo_calibration', rows=6, columns=9, square_size=1.8):
     image_size = (720, 1280-500)
     print('Stating camera calibrator...')
     print('Importing files...')
