@@ -6,6 +6,9 @@ import sys
 import numpy as np
 import cv2
 
+TRY_CACHED = False
+CROP_WIDTH = 960
+
 CHESSBOARD_SIZE = (9, 6)
 CHESSBOARD_OPTIONS = (cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE | cv2.CALIB_CB_FAST_CHECK)
 
@@ -28,15 +31,23 @@ rightImageDir = sys.argv[2]
 outputFile = sys.argv[3]
 
 
+def cropHorizontal(image):
+    CAMERA_WIDTH = image.shape[1]
+    return image[:,
+           int((CAMERA_WIDTH - CROP_WIDTH) / 2):
+           int(CROP_WIDTH + (CAMERA_WIDTH - CROP_WIDTH) / 2)]
+
+
 def readImagesAndFindChessboards(imageDirectory):
     cacheFile = "{0}/chessboards.npz".format(imageDirectory)
-    try:
-        cache = np.load(cacheFile)
-        print("Loading image data from cache file at {0}".format(cacheFile))
-        return (list(cache["filenames"]), list(cache["objectPoints"]),
-                list(cache["imagePoints"]), tuple(cache["imageSize"]))
-    except IOError:
-        print("Cache file at {0} not found".format(cacheFile))
+    if TRY_CACHED:
+        try:
+            cache = np.load(cacheFile)
+            print("Loading image data from cache file at {0}".format(cacheFile))
+            return (list(cache["filenames"]), list(cache["objectPoints"]),
+                    list(cache["imagePoints"]), tuple(cache["imageSize"]))
+        except IOError:
+            print("Cache file at {0} not found".format(cacheFile))
 
     print("Reading images at {0}".format(imageDirectory))
     imagePaths = glob.glob("{0}/*.jpg".format(imageDirectory))
@@ -48,6 +59,7 @@ def readImagesAndFindChessboards(imageDirectory):
 
     for imagePath in sorted(imagePaths):
         image = cv2.imread(imagePath)
+        image = cropHorizontal(image)
         grayImage = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         newSize = grayImage.shape[::-1]
@@ -61,17 +73,23 @@ def readImagesAndFindChessboards(imageDirectory):
                                                         CHESSBOARD_SIZE, cv2.CALIB_CB_FAST_CHECK)
 
         if hasCorners:
-            filenames.append(os.path.basename(imagePath))
-            objectPoints.append(OBJECT_POINT_ZERO)
-            cv2.cornerSubPix(grayImage, corners, (11, 11), (-1, -1),
-                             TERMINATION_CRITERIA)
-            imagePoints.append(corners)
+            cv2.drawChessboardCorners(image, CHESSBOARD_SIZE, corners, hasCorners)
 
-        cv2.drawChessboardCorners(image, CHESSBOARD_SIZE, corners, hasCorners)
-        cv2.imshow(imageDirectory, image)
+            while True:
+                cv2.imshow(imageDirectory, image)
+                key = cv2.waitKey(33)
+                if key == 27:  # esc
+                    break
+                elif key == -1:
+                    continue
+                elif key == 32:
+                    filenames.append(os.path.basename(imagePath))
+                    objectPoints.append(OBJECT_POINT_ZERO)
+                    cv2.cornerSubPix(grayImage, corners, (11, 11), (-1, -1),
+                                     TERMINATION_CRITERIA)
+                    imagePoints.append(corners)
 
-        # Needed to draw the window
-        cv2.waitKey(1)
+                    break
 
     cv2.destroyWindow(imageDirectory)
 
@@ -122,19 +140,17 @@ rightObjectPoints, rightImagePoints = getMatchingObjectAndImagePoints(filenames,
                                                                       rightFilenames, rightObjectPoints,
                                                                       rightImagePoints)
 
-# TODO: Fix this validation
-# Keep getting "Use a.any() or a.all()" even though it's already used?!
-# if (leftObjectPoints != rightObjectPoints).all():
-#     print("Object points do not match")
-#     sys.exit(1)
+if not (leftObjectPoints[i] == rightObjectPoint for i, rightObjectPoint in enumerate(rightObjectPoints)):
+    print("Object points do not match")
+    sys.exit(1)
 objectPoints = leftObjectPoints
 
 print("Calibrating left camera...")
-_, leftCameraMatrix, leftDistortionCoefficients, _, _ = cv2.calibrateCamera(
-    objectPoints, leftImagePoints, imageSize, None, None)
+_, leftCameraMatrix, leftDistortionCoefficients, _, _ = cv2.calibrateCamera(objectPoints, leftImagePoints, imageSize,
+                                                                            None, None)
 print("Calibrating right camera...")
-_, rightCameraMatrix, rightDistortionCoefficients, _, _ = cv2.calibrateCamera(
-    objectPoints, rightImagePoints, imageSize, None, None)
+_, rightCameraMatrix, rightDistortionCoefficients, _, _ = cv2.calibrateCamera(objectPoints, rightImagePoints, imageSize,
+                                                                              None, None)
 
 print("Calibrating cameras together...")
 (_, _, _, _, _, rotationMatrix, translationVector, _, _) = cv2.stereoCalibrate(
